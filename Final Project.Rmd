@@ -1,0 +1,438 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+```
+
+### Load data
+
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+
+
+* * *
+
+## Part 1: Data ##
+
+### Sample Collection: ###
+This provided dataset include information from Rotten Tomatoes and IMDB for a random sample of movies.It is comprised of 651 randomly sampled movies produced and released before 2016.
+
+### Inference: ###
+
+##### 01. Causality #####
+Since the data is randomly sample instead of randomly assignment hence causality is not possible but meaningful association can be explored with this data. 
+
+##### 02. Generalizability #####
+Since the data is randomly sample from two sources namely Rotten Tomatoes and IMDB it is possible to generalize the finding to the population. Although the number of observations (651 records) in provided sample doesn't seems enough to make a concrete conclusion about the population which might increase the margin of error. 
+
+
+
+* * *
+
+## Part 2: Research question
+
+Which are the most relevant variables in this dataset that have a signifcant impact on the `imdb rating`? It will be interesting to analyze the percentage of contribution of various factor when it comes to imdb rating such as how much `critics score` will impact imdb rating?. In this analysis I will try to make a model based on significant variables to predict `imdb rating`.
+
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+1. Selection of attributes (features):
+
+```{r}
+# Following columns are selected based on intution #
+selected_features = select(movies, genre,runtime,imdb_rating,imdb_num_votes,critics_rating,critics_score,audience_rating,audience_score,best_pic_win, best_pic_nom,best_actor_win,best_actress_win,top200_box)
+
+# exclude missing data #
+selected_features <- na.exclude(selected_features)
+```
+
+2. Distribution/Summary Statistics of dependent variable (imdb rating):
+
+```{r}
+# Take a look at summary statistics of target variable (IMDB rating) #
+summary(movies$imdb_rating)
+```
+
+**Observation**:
+
+- Most of the movies received fairly good rating on average (Median and mean close to 7). The 1st, 2nd (median) and 3rd quartile (which is about 75% of the movies in the data) received rating in range of 5 to 7. 
+- Some movies performed exceptionally well (Maximum rating 9) whereas some movies performed worst than average (minimum rating 1.2 approx 2)
+
+```{r}
+# Distribution # 
+hist(movies$imdb_rating,xlab = "imdb rating", main = 'Histogram of imdb rating')
+
+```
+
+**Observation**:
+
+- Histogram confirmed our observations from summary statistics. The distribution is left skewed i.e only few values are on the extreme left of the distribution. (only few movies which performed less than average)
+
+
+
+#### Univariate & Bivariate Analysis ####
+1. Imdb number of votes:
+```{r}
+
+# i. IMDB Score #
+summary(movies$imdb_num_votes)
+
+```
+
+**Observations**:
+
+- Mean is greater than Median which suggest the distribution is highly right skewed i.e only few movies received high number of votes. 
+
+
+```{r}
+# distirbution #
+hist(movies$imdb_num_votes, xlab = "imdb number of votes", main = 'Histogram of imdb number of votes')
+```
+
+**Observations**:
+
+- Histogram confirmed our observations from summary statistics that distrbution of number of votes is highly right skewed. 
+
+
+```{r}
+# imdb rating w.r.t imdb number of votes #
+ggplot(movies, aes(x=imdb_num_votes, y=imdb_rating))+geom_point()+geom_smooth(method = 'lm')+ggtitle('imdb rating w.r.t imdb number of votes ')+xlab('imdb number of votes')+ylab('imdb rating')+theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+**Observations**:
+
+- In scatterplot where most of the observations are located the imdb rating is increasing/decreasing regardless of the number of votes (which is not increasing near 0).
+- As the number of votes start increasing there seems to have a positive linear relationship. (which is evident from the fitted line)
+
+```{r}
+# Correlation # 
+movies %>% summarise(correlation = cor(imdb_num_votes,imdb_rating))
+```
+
+**Observations**:
+
+- As expected the correlation between imdb rating and number of imdb votes is quite low because there is no linear relationship observed in cases where number of votes were constant.
+- Nevertheless this feature can be used for predicting imdb rating. 
+
+2. Audience Rating:
+ 
+```{r}
+
+# distirbution within each level of audience rating #
+boxplot(movies$imdb_rating ~ movies$audience_rating,xlab = "Audience Rating",main='Boxplot of imdb rating for each group of audience rating',ylab='imdb rating')
+
+```
+
+**Observations**:
+
+- Movies which recevied **upright** `audience rating` likely to have high `imdb rating` on average compared to movies for which audience rate **spilled**
+
+
+```{r}
+# Hypothesis testing #
+# Ho: There is no difference between average of two groups. (upright and spilled) 
+# Mean imdb rating (upright) == Mean imdb rating (spilled)
+# Ha: There is some difference between average of two groups. (upgright and spilled)
+# Mean imdb rating (upright) != Mean imdb rating (spilled)
+upright <- movies[movies$audience_rating=='Upright',"imdb_rating"]
+spilled <- movies[movies$audience_rating=='Spilled',"imdb_rating"]
+
+t.test(upright, spilled)
+
+```
+
+**Observations**:
+
+- p-value which less than significance level (in this case alpha = 0.05) suggest that it is highly unlikely to receive this high value of t statistics considering the null hypothesis is true. 
+- Confidence interval (95%) doesn't include 0. (which is the null value). In fact movies which have received **upright** audience rating likely to have `high imdb rating` (roughly 1.3 to 1.6 more than **spilled** at 95% confidence interval)
+- Based on p-value and confidence interval `audience rating` seems to be a good predictor for `imdb rating`.
+
+
+iii Critics Score:
+```{r}
+# critics score summary statistics #
+summary(movies$critics_score)
+```
+
+**Observations**:
+
+- Mean is less than median which suggest the distribution is left skewed. i.e only few movies received less critic score.
+
+```{r}
+# histogram of critics score #
+hist(movies$critics_score, main = 'Histogram of critics score',xlab = 'Critic score')
+```
+
+**Observations**:
+
+- As expected the distribution is lightly left skewed. 
+
+
+```{r}
+
+# imdb rating w.r.t critics score #
+ggplot(selected_features, aes(x=critics_score, y=imdb_rating))+geom_point()+geom_smooth(method = 'lm')+ggtitle('imdb rating w.r.t critic score')+xlab('critic score')+ylab('imdb rating')+theme(plot.title = element_text(hjust = 0.5))
+```
+
+**Observations**:
+
+- From scattterplot it seems like there is strong postive linear relation between `critics score` and `imdb rating`. As the `critic score` increase there is a high chance that `imdb rating` will also increase. 
+
+
+```{r}
+# Correlation # 
+selected_features %>% summarise(correlation = cor(critics_score,imdb_rating))
+
+```
+  
+**Observations**:
+
+- As expected there is fairly strong correlation between `critics score` and `imdb rating`.Which suggest that it could be good predictor for imdb rating. 
+
+iv. Critics Rating:
+````{r}
+
+# distirbution within each level of audience rating #
+boxplot(movies$imdb_rating ~ movies$critics_rating, main = 'Boxplot of imdb rating for each group of critic rating',xlab = 'critic rating',ylab = 'imdb rating')
+
+```
+
+**Observations**:
+
+- Each group (`critics rating`) have different average imdb rating such as movies which was was rated as **rotten** by critics tend to have lower average imdb rating compared to **fresh and certified fresh** rated movies. 
+
+```{r}
+# Hypothesis Testing #
+# Ho == Null hypothesis --> There is no difference in average imdb rating w.r.t each group. (They are independent)
+# Ha == Alternate hypothesis --> At least one of the group has a signifcantly different average imdb rating compared with others # 
+
+# Anova # 
+av1 <- aov(imdb_rating ~ critics_rating, data=movies)
+summary(av1)
+```
+
+**Observations**:
+
+- Given the sum of square it is can be seen that a signicant variability of `imdb rating` can be explained with `critic rating`. 
+- Since p-values is less than signicance level (in this case alpha = 0.05) we can reject null hypothesis that there is no difference in average imdb rating between different levels of critic rating.
+- Summary of anova suggest that it can be good predictor to define the unexplained variability of `imdb rating`. 
+
+
+
+
+* * *
+
+## Part 4: Modeling
+1. Variables for Full model: 
+    - genre
+    - runtime
+    - imdb_num_votes
+    - critics_rating
+    - critics_score
+    - audience_rating
+    - audience_score
+    - best_pic_win
+    - best_pic_nom
+    - best_actor_win
+    - best_actress_win
+    - top200_box
+```{r}
+m_full <- lm (imdb_rating ~ genre+runtime+imdb_num_votes+critics_rating+audience_rating+best_pic_win+ best_pic_nom+best_actor_win+best_actress_win+top200_box+audience_score+critics_score, data= selected_features)
+
+summary(m_full)
+
+anova(m_full)
+```
+
+
+**Observations**:
+
+- From the output of full model we can see that following are the **signicant features** (hence p-value < 0.05)
+    - genre
+    - runtime
+    - imdb_num_votes
+    - critics_rating
+    - audience_rating
+    - critics_score
+    - audience score
+- From the output of full model we can see that following are the **not significant features** (hence p-value > 0.05)
+    - best_actress_win
+    - best_actor_win
+    - top200_boxyes
+    - best_pic_win
+    - best_pic_nom
+- Although some level of genre are not significant (where p-value > 0.05) but since there are some levels which are signicant (where p-value < 0.05) we assume that genre is still a significant feature to predict imdb rating.
+- From Anova of full model it is also visualable that less significant feature explain very little variability of the data (sum of square is close to 0) whereas, most of the variability explained by significant features. (genre, critic rating etc)
+
+
+2. Reasoning for excluding certain variables:
+
+**Reasoning**:
+
+After reviewing the diagnostic of full model it is certain to remove the following features from the model. 
+
+    - best_actress_win
+    - best_actor_win
+    - top200_boxyes
+    - best_pic_win
+    - best_pic_nom
+These variables only explain very little variability in the data (as seen from anova above) and unnecessarily complicate the model (since they are not significant). These are the reasons of exclusion of these variables from the model.
+
+3. Model Selection using backward Elimination:
+
+**Reasoning**:
+Since we have full model now we will do a model selection using backward elimination which will help us by only removing the variables which are less siginificant. 
+
+```{r}
+#  model selection using backward elimination #
+SimpleModel<-step(m_full, direction = "backward", trace=FALSE ) 
+summary(SimpleModel)
+
+anova(SimpleModel)
+```
+
+4. Model diagnostics:
+    i. linear relationship between X (numerical) and y:
+
+```{r}
+par(mfrow = c(2, 2))
+mylist <- list()
+mylist = c('runtime','imdb_num_votes','critics_score','audience_score')
+numeric_dt <- selected_features[,mylist]
+loop.vector <- 1:4
+for (i in loop.vector) {
+  # draw a residual plot # 
+  x <- numeric_dt[[i]]
+  plot(SimpleModel$residuals ~ x,main=paste('Residual plot w.r.t',mylist[i]))
+  abline(0,0)
+  
+}
+
+
+
+```
+**Observations**:
+
+- Residual plot with respect to `critics_score` and `audience_score` showed a random scatter around 0. 
+- Observations in residual plot with respect to `runtime` and `imdb_num_votes` doesn't appear to be random scatter around 0. 
+
+  ii. nearly normal residuals with mean 0:
+```{r}
+par(mfrow = c(1, 2))
+# histogram of residual #
+hist(SimpleModel$residuals, main = 'Histogram of Residuals')
+# normal q-q or probability plot of residual plot # 
+qqnorm(SimpleModel$residuals, main = 'Normal Q-Q plot of Residual')
+qqline(SimpleModel$residuals)
+
+
+```
+
+**Observations**:
+
+- Residuals are not nearly normally distributed. It is visible from histogram and normal q-q plot that residuals of our simple model are left skewed.
+
+  iii. constant variability of residuals:
+  
+```{r}
+# Residual plot with predicted values #
+par(mfrow = c(1, 2))
+plot(SimpleModel$residuals ~ SimpleModel$fitted.values, main = 'Residuals Vs Predicted')
+abline(0,0)
+plot(abs(SimpleModel$residuals) ~ SimpleModel$fitted.values, main = 'Absolute Residuals Vs Predicted')
+abline(0,0)
+```
+  
+**Observations**:
+
+- In above plots of residuals vs predicted the variability doesn't seem to be scattered around the mean 0. As the fitted values are increasing there seems to have less variability around it compared to lower fitted values. 
+
+  iv. independent residuals:
+
+**Observations**:
+
+- Since the data is randomly sampled it is believed that residuals will be independent of each other. 
+
+5. Interpretation of model coefficients:
+```{r}
+summary(SimpleModel)
+```
+
+**Interpretation**:
+
+- Some levels of `genre` such as **animation, comedy, science fiction and fantasy** have negative coefficients which means for each of these genre our model will be decrease the imdb rating by respective cofficients. 
+
+- Variables like **critics_score,runtime, audience_score, audience_rating, critic_rating and imdb_num_votes** have possitive cofficients which suggest that our model will increase the imdb rating by respective cofficients. 
+
+- `critics_ratingRotten` has the highest positive cofficient (0.3) which means this variable impact imdb rating the most compared to other variables (at least in this model) 
+
+- It is interesting to see that `audience_ratingUpright` has a negative coefficient. Which mean for movie which received **upright** auidence rating their `imdb rating` on average decrease by -0.348. 
+
+- Ajusted R-squared is 0.83 which means our model explain around 83% of the variability in the data.
+
+
+* * *
+
+## Part 5: Prediction
+
+The film chosen for prediction is `Captain America: Civil War (2016)`. Following variables of the movies are gathered from imdb and Rotten Tomatoes:
+
+-genre: Action & Adventure
+
+-runtime = 146
+
+-critics_score: 91
+
+-audience_score: 89
+
+-critics_rating : Certified Fresh
+
+-audience_rating: Upright
+
+  -imdb_num_votes: 633,950
+
+```{r}
+new=data.frame(critics_score=91, runtime=146,  genre="Action & Adventure",audience_score= 89,critics_rating = "Certified Fresh",audience_rating= "Upright",imdb_num_votes= 633950)
+  
+predict(SimpleModel, newdata=new, interval="prediction")
+
+```
+
+**Results**:
+
+- On imdb the actual imdb rating is `7.8` whereas our model predicted `8.2`. Note that lower confidence interval (`7.3`) and upper confidence interval (`9.17`) contain the actual imdb rating. 
+
+ 
+* * *
+
+## Part 6: Conclusion
+
+**Shortcoming of this mode**:
+
+- From residual plots it is certain that our model will be more accurate (less residuals) while predicting for a movie which has high `number of imdb votes` or `critics score` compared to the movies which have low `number of votes` or `critics score`. 
+
+- There is still around 20% of variability that our model doesn't explain. 
+
+**Cohesive synthesis of findings and Conclusion**:
+
+When it comes to imdb rating `genre`, `audience score` and `critics rating` are the variables that impact it the most. It is also interesting to note here that it doesn't really matter if the movie hit on the box office or movie has the best actor/actress when it comes to high/low imdb rating.
+
